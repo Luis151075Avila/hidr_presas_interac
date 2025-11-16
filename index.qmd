@@ -1,0 +1,494 @@
+---
+title: "Análisis Hidráulico Computacional de Presas"
+subtitle: "VortexLAB Ingeniería - Análisis Interactivo"
+format:
+  html:
+    page-layout: full
+    theme: slate
+    toc: true
+    toc-location: left
+    code-fold: true
+    code-tools: true
+    embed-resources: false
+    self-contained: false
+---
+
+```{=html}
+<style>
+  body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0f172a 100%);
+    color: #e2e8f0;
+  }
+  .panel-tabset {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+  h1, h2, h3 {
+    color: #e0f2fe;
+  }
+  .alert {
+    background: rgba(30, 58, 138, 0.3);
+    border-left: 4px solid #3b82f6;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+  }
+</style>
+```
+
+```{ojs}
+//| echo: false
+// Import Plotly
+Plotly = require('https://cdn.plot.ly/plotly-2.26.0.min.js')
+
+// Import lodash for calculations
+_ = require('lodash')
+```
+
+## 🏗️ Parámetros de Diseño de la Presa
+
+Ajuste los parámetros de diseño para analizar el comportamiento hidráulico de la presa en tiempo real.
+
+::: {.panel-tabset}
+
+### 📐 Geometría
+
+```{ojs}
+viewof altura_presa = Inputs.range(
+  [10, 100], 
+  {
+    label: "Altura de la presa (m)",
+    step: 5,
+    value: 50
+  }
+)
+
+viewof ancho_corona = Inputs.range(
+  [3, 15], 
+  {
+    label: "Ancho de corona (m)",
+    step: 0.5,
+    value: 6
+  }
+)
+
+viewof talud_aguas_arriba = Inputs.range(
+  [0.2, 1.0], 
+  {
+    label: "Talud aguas arriba (H:V)",
+    step: 0.05,
+    value: 0.5
+  }
+)
+
+viewof talud_aguas_abajo = Inputs.range(
+  [0.5, 2.0], 
+  {
+    label: "Talud aguas abajo (H:V)",
+    step: 0.05,
+    value: 1.5
+  }
+)
+```
+
+### 💧 Hidrología
+
+```{ojs}
+viewof caudal_diseno = Inputs.range(
+  [50, 5000], 
+  {
+    label: "Caudal de diseño (m³/s)",
+    step: 50,
+    value: 1000
+  }
+)
+
+viewof nivel_agua = Inputs.range(
+  [altura_presa * 0.5, altura_presa * 0.95], 
+  {
+    label: "Nivel de agua (m)",
+    step: 1,
+    value: altura_presa * 0.85
+  }
+)
+
+viewof periodo_retorno = Inputs.select(
+  ["10 años", "25 años", "50 años", "100 años", "500 años", "1000 años", "PMF"],
+  {
+    label: "Período de retorno",
+    value: "100 años"
+  }
+)
+```
+
+### 🌊 Vertedero
+
+```{ojs}
+viewof tipo_vertedero = Inputs.select(
+  ["Libre", "Cimacio", "Laberinto", "Morning Glory"],
+  {
+    label: "Tipo de vertedero",
+    value: "Cimacio"
+  }
+)
+
+viewof longitud_vertedero = Inputs.range(
+  [20, 200], 
+  {
+    label: "Longitud del vertedero (m)",
+    step: 10,
+    value: 80
+  }
+)
+
+viewof coef_descarga = Inputs.range(
+  [1.5, 2.5], 
+  {
+    label: "Coeficiente de descarga",
+    step: 0.1,
+    value: 2.1
+  }
+)
+```
+
+:::
+
+## 📊 Resultados del Análisis
+
+```{ojs}
+//| echo: false
+
+// Cálculos hidráulicos
+calculos = {
+  // Geometría de la presa
+  const base_arriba = ancho_corona + (altura_presa * talud_aguas_arriba);
+  const base_abajo = ancho_corona + (altura_presa * talud_aguas_abajo);
+  const base_total = base_arriba + base_abajo;
+  const area_seccion = (base_total * altura_presa) / 2;
+  const volumen_por_metro = area_seccion;
+  
+  // Carga sobre el vertedero
+  const carga_vertedero = Math.pow(caudal_diseno / (coef_descarga * longitud_vertedero), 2/3);
+  
+  // Velocidad del agua
+  const velocidad = caudal_diseno / (longitud_vertedero * carga_vertedero);
+  
+  // Número de Froude
+  const froude = velocidad / Math.sqrt(9.81 * carga_vertedero);
+  
+  // Energía específica
+  const energia_especifica = carga_vertedero + (Math.pow(velocidad, 2) / (2 * 9.81));
+  
+  // Presión en la base
+  const presion_base = 9.81 * nivel_agua / 1000; // en MPa
+  
+  // Factor de seguridad estimado (simplificado)
+  const factor_seguridad = (base_total / altura_presa) * 1.5;
+  
+  return {
+    base_arriba: base_arriba.toFixed(2),
+    base_abajo: base_abajo.toFixed(2),
+    base_total: base_total.toFixed(2),
+    area_seccion: area_seccion.toFixed(2),
+    volumen_por_metro: volumen_por_metro.toFixed(2),
+    carga_vertedero: carga_vertedero.toFixed(2),
+    velocidad: velocidad.toFixed(2),
+    froude: froude.toFixed(3),
+    energia_especifica: energia_especifica.toFixed(2),
+    presion_base: presion_base.toFixed(3),
+    factor_seguridad: factor_seguridad.toFixed(2),
+    tipo_flujo: froude > 1 ? "Supercrítico" : "Subcrítico"
+  };
+}
+```
+
+::: {.grid}
+::: {.g-col-6}
+### 📏 Dimensiones Calculadas
+
+- **Base aguas arriba:** ${calculos.base_arriba} m
+- **Base aguas abajo:** ${calculos.base_abajo} m
+- **Base total:** ${calculos.base_total} m
+- **Área de sección:** ${calculos.area_seccion} m²
+- **Volumen por metro:** ${calculos.volumen_por_metro} m³/m
+
+:::
+::: {.g-col-6}
+### 🌊 Parámetros Hidráulicos
+
+- **Carga sobre vertedero:** ${calculos.carga_vertedero} m
+- **Velocidad del flujo:** ${calculos.velocidad} m/s
+- **Número de Froude:** ${calculos.froude} (${calculos.tipo_flujo})
+- **Energía específica:** ${calculos.energia_especifica} m
+- **Presión en base:** ${calculos.presion_base} MPa
+
+:::
+:::
+
+::: {.alert}
+**Factor de Seguridad Estimado:** ${calculos.factor_seguridad} 
+${parseFloat(calculos.factor_seguridad) < 1.5 ? "⚠️ ADVERTENCIA: Factor de seguridad bajo. Revisar diseño." : "✅ Factor de seguridad adecuado."}
+:::
+
+## 📈 Perfil de la Presa
+
+```{ojs}
+//| echo: false
+
+perfil_presa = {
+  // Generar perfil de la presa
+  const puntos_x = [];
+  const puntos_y = [];
+  
+  // Base aguas arriba
+  const base_arriba = ancho_corona + (altura_presa * talud_aguas_arriba);
+  const base_abajo = ancho_corona + (altura_presa * talud_aguas_abajo);
+  
+  // Perfil aguas arriba
+  puntos_x.push(0);
+  puntos_y.push(0);
+  puntos_x.push(base_arriba);
+  puntos_y.push(altura_presa);
+  
+  // Corona
+  puntos_x.push(base_arriba + ancho_corona);
+  puntos_y.push(altura_presa);
+  
+  // Perfil aguas abajo
+  puntos_x.push(base_arriba + ancho_corona + base_abajo);
+  puntos_y.push(0);
+  
+  // Cerrar el polígono
+  puntos_x.push(0);
+  puntos_y.push(0);
+  
+  // Nivel del agua
+  const agua_x = [0, base_arriba, base_arriba + ancho_corona];
+  const agua_y = [nivel_agua, nivel_agua, nivel_agua];
+  
+  const trace_presa = {
+    x: puntos_x,
+    y: puntos_y,
+    fill: 'toself',
+    fillcolor: 'rgba(100, 116, 139, 0.7)',
+    line: { color: '#475569', width: 3 },
+    name: 'Presa',
+    type: 'scatter'
+  };
+  
+  const trace_agua = {
+    x: agua_x,
+    y: agua_y,
+    line: { color: '#3b82f6', width: 3, dash: 'dash' },
+    name: 'Nivel de agua',
+    type: 'scatter'
+  };
+  
+  const layout = {
+    title: 'Sección Transversal de la Presa',
+    xaxis: { 
+      title: 'Distancia horizontal (m)',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    yaxis: { 
+      title: 'Elevación (m)',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    showlegend: true,
+    paper_bgcolor: 'rgba(15, 23, 42, 0.5)',
+    plot_bgcolor: 'rgba(30, 58, 138, 0.2)',
+    font: { color: '#e2e8f0' },
+    margin: { t: 50, r: 50, b: 50, l: 70 }
+  };
+  
+  const div = html`<div></div>`;
+  Plotly.newPlot(div, [trace_presa, trace_agua], layout, {responsive: true});
+  return div;
+}
+```
+
+## 📉 Curva de Descarga del Vertedero
+
+```{ojs}
+//| echo: false
+
+curva_descarga = {
+  // Generar curva de descarga
+  const cargas = [];
+  const caudales = [];
+  
+  for (let h = 0.5; h <= altura_presa * 0.5; h += 0.5) {
+    cargas.push(h);
+    const q = coef_descarga * longitud_vertedero * Math.pow(h, 1.5);
+    caudales.push(q);
+  }
+  
+  // Punto de diseño
+  const carga_diseno = Math.pow(caudal_diseno / (coef_descarga * longitud_vertedero), 2/3);
+  
+  const trace_curva = {
+    x: cargas,
+    y: caudales,
+    line: { color: '#06a77d', width: 3 },
+    name: 'Curva de descarga',
+    type: 'scatter'
+  };
+  
+  const trace_diseno = {
+    x: [carga_diseno],
+    y: [caudal_diseno],
+    mode: 'markers',
+    marker: { color: '#e11d48', size: 12, symbol: 'star' },
+    name: 'Punto de diseño',
+    type: 'scatter'
+  };
+  
+  const layout = {
+    title: `Curva de Descarga - Vertedero ${tipo_vertedero}`,
+    xaxis: { 
+      title: 'Carga sobre vertedero (m)',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    yaxis: { 
+      title: 'Caudal (m³/s)',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    showlegend: true,
+    paper_bgcolor: 'rgba(15, 23, 42, 0.5)',
+    plot_bgcolor: 'rgba(30, 58, 138, 0.2)',
+    font: { color: '#e2e8f0' },
+    margin: { t: 50, r: 50, b: 50, l: 70 }
+  };
+  
+  const div = html`<div></div>`;
+  Plotly.newPlot(div, [trace_curva, trace_diseno], layout, {responsive: true});
+  return div;
+}
+```
+
+## 🌊 Análisis de Períodos de Retorno
+
+```{ojs}
+//| echo: false
+
+analisis_retorno = {
+  const periodos = [
+    { nombre: "10 años", caudal: caudal_diseno * 0.6 },
+    { nombre: "25 años", caudal: caudal_diseno * 0.75 },
+    { nombre: "50 años", caudal: caudal_diseno * 0.85 },
+    { nombre: "100 años", caudal: caudal_diseno * 1.0 },
+    { nombre: "500 años", caudal: caudal_diseno * 1.15 },
+    { nombre: "1000 años", caudal: caudal_diseno * 1.25 },
+    { nombre: "PMF", caudal: caudal_diseno * 1.5 }
+  ];
+  
+  const cargas_calculadas = periodos.map(p => ({
+    periodo: p.nombre,
+    caudal: p.caudal,
+    carga: Math.pow(p.caudal / (coef_descarga * longitud_vertedero), 2/3),
+    velocidad: p.caudal / (longitud_vertedero * Math.pow(p.caudal / (coef_descarga * longitud_vertedero), 2/3))
+  }));
+  
+  const trace = {
+    x: cargas_calculadas.map(d => d.periodo),
+    y: cargas_calculadas.map(d => d.carga),
+    type: 'bar',
+    marker: { 
+      color: cargas_calculadas.map(d => 
+        d.periodo === periodo_retorno ? '#e11d48' : '#3b82f6'
+      )
+    },
+    text: cargas_calculadas.map(d => d.carga.toFixed(2) + ' m'),
+    textposition: 'outside',
+    name: 'Carga sobre vertedero'
+  };
+  
+  const layout = {
+    title: 'Cargas para Diferentes Períodos de Retorno',
+    xaxis: { 
+      title: 'Período de retorno',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    yaxis: { 
+      title: 'Carga sobre vertedero (m)',
+      gridcolor: 'rgba(255, 255, 255, 0.1)'
+    },
+    paper_bgcolor: 'rgba(15, 23, 42, 0.5)',
+    plot_bgcolor: 'rgba(30, 58, 138, 0.2)',
+    font: { color: '#e2e8f0' },
+    margin: { t: 50, r: 50, b: 80, l: 70 }
+  };
+  
+  const div = html`<div></div>`;
+  Plotly.newPlot(div, [trace], layout, {responsive: true});
+  return div;
+}
+```
+
+## 📋 Tabla de Resultados Comparativos
+
+```{ojs}
+//| echo: false
+
+tabla_resultados = {
+  const periodos = [
+    { nombre: "10 años", factor: 0.6 },
+    { nombre: "25 años", factor: 0.75 },
+    { nombre: "50 años", factor: 0.85 },
+    { nombre: "100 años", factor: 1.0 },
+    { nombre: "500 años", factor: 1.15 },
+    { nombre: "1000 años", factor: 1.25 },
+    { nombre: "PMF", factor: 1.5 }
+  ];
+  
+  const datos = periodos.map(p => {
+    const q = caudal_diseno * p.factor;
+    const h = Math.pow(q / (coef_descarga * longitud_vertedero), 2/3);
+    const v = q / (longitud_vertedero * h);
+    const fr = v / Math.sqrt(9.81 * h);
+    
+    return {
+      "Período": p.nombre,
+      "Caudal (m³/s)": q.toFixed(1),
+      "Carga (m)": h.toFixed(2),
+      "Velocidad (m/s)": v.toFixed(2),
+      "Froude": fr.toFixed(3),
+      "Tipo": fr > 1 ? "Supercrítico" : "Subcrítico"
+    };
+  });
+  
+  return Inputs.table(datos, {
+    rows: 10,
+    layout: "auto"
+  });
+}
+```
+
+---
+
+## 💡 Notas Técnicas
+
+### Metodología de Cálculo
+
+- **Ecuación de vertedero:** $Q = C \cdot L \cdot H^{3/2}$
+- **Número de Froude:** $Fr = \frac{V}{\sqrt{g \cdot H}}$
+- **Energía específica:** $E = H + \frac{V^2}{2g}$
+
+### Consideraciones de Diseño
+
+- Factor de seguridad mínimo recomendado: **1.5**
+- Flujo subcrítico (Fr < 1): Más estable y controlable
+- Flujo supercrítico (Fr > 1): Requiere disipadores de energía
+
+### Referencias
+
+- USBR (2006). Design of Small Dams
+- ICOLD (1995). Dam Design Criteria
+- Chow, V.T. (1959). Open-Channel Hydraulics
+
+---
+
+<div style="text-align: center; color: #64748b; padding: 2rem 0;">
+  <strong>VortexLAB Ingeniería</strong> | Análisis desarrollado con Quarto + Observable JS
+</div>
